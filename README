@@ -7,7 +7,7 @@ Installation on Windows
 2. Download https://bootstrap.pypa.io/get-pip.py, being careful to save it as a .py file rather than .txt.
 Then, run it from the command prompt:
 
-python get-pip.py
+python.exe get-pip.py
 
 You possibly need an administrator command prompt to do this. Follow Start a Command Prompt as an Administrator (Microsoft TechNet).
 
@@ -19,10 +19,12 @@ pip.exe install configparser
 
 4. download and install GIT from http://git-scm.com/download/win
 
-5. open command prompt and execute this commands to download this project:
+5. open mingw64 command prompt and execute this commands to download this project:
 
-cd c:\
+cd /c
 git clone https://github.com/bercob/hobby_prices.git
+
+6. make a copy of ini/credentials.example.ini to ini/credentials.ini and fill the credentials
 
 ----------------------------------------------------------------------------------------
 

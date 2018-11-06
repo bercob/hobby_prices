@@ -1,7 +1,15 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-import optparse, requests, logging, signal, sys, urllib, traceback, json, re
+import optparse
+import requests
+import logging
+import signal
+import sys
+import urllib
+import traceback
+import json
+import re
 from bs4 import BeautifulSoup
 from ConfigParser import SafeConfigParser
 
