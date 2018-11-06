@@ -17,6 +17,13 @@ cd c:\Python27\Scripts
 pip.exe install beautifulsoup4
 pip.exe install configparser
 
+4. download and install GIT from http://git-scm.com/download/win
+
+5. open command prompt and execute this commands to download this project:
+
+cd c:\
+git clone https://github.com/bercob/hobby_prices.git
+
 ----------------------------------------------------------------------------------------
 
 Usage: ./update_prices.py <ini file path>
