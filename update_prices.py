@@ -10,6 +10,7 @@ import urllib
 import traceback
 import json
 import re
+import os
 from bs4 import BeautifulSoup
 from ConfigParser import SafeConfigParser
 
@@ -26,7 +27,9 @@ def help(parser):
 
 
 def set_logging(ini_parser):
-    logging.basicConfig(filename = ini_parser.get("logging", "log_file_path"), level = logging.INFO, format = "%(asctime)s %(message)s")
+    logging.basicConfig(filename = os.path.join(ini_parser.get("logging", "log_file_dir"),
+                                                ini_parser.get("logging", "log_file_name")),
+                        level = logging.INFO, format = "%(asctime)s %(message)s")
     sh = logging.StreamHandler(sys.stdout)
     sh.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
     logging.getLogger().addHandler(sh)
@@ -115,7 +118,7 @@ def main(m_args=None):
     VAT = float(ini_parser.get("general", "vat"))
     MY_SHOP_NAME = ini_parser.get("general", "my_shop_name")
     # credentials
-    CREDENTIAL_INI_FILE_PATH = ini_parser.get("credentials", "ini_file_path")
+    CREDENTIAL_INI_FILE_PATH = os.path.join(ini_parser.get("credentials", "ini_file_dir"), ini_parser.get("credentials", "ini_file_name"))
     # urls
     API_URL = ini_parser.get("urls", "api_url")
     SEARCH_URL = ini_parser.get("urls", "search_url")

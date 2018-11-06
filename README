@@ -16,6 +16,7 @@ You possibly need an administrator command prompt to do this. Follow Start a Com
 cd c:\Python27\Scripts
 pip.exe install beautifulsoup4
 pip.exe install configparser
+pip.exe install requests
 
 4. download and install GIT from http://git-scm.com/download/win
 
