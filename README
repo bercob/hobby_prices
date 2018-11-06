@@ -1,0 +1,30 @@
+Installation on Windows
+
+1. download and install python:
+  - 64 bit version: https://www.python.org/ftp/python/2.7.13/python-2.7.13.amd64.msi
+  - 32 bit version: https://www.python.org/ftp/python/2.7.13/python-2.7.13.msi
+
+2. Download https://bootstrap.pypa.io/get-pip.py, being careful to save it as a .py file rather than .txt.
+Then, run it from the command prompt:
+
+python get-pip.py
+
+You possibly need an administrator command prompt to do this. Follow Start a Command Prompt as an Administrator (Microsoft TechNet).
+
+3. open command prompt and execute this commands:
+
+cd c:\Python27\Scripts
+pip.exe install beautifulsoup4
+pip.exe install configparser
+
+----------------------------------------------------------------------------------------
+
+Usage: ./update_prices.py <ini file path>
+
+update prices
+
+author: Balogh Peter <bercob@gmail.com>
+
+Options:
+  -h, --help     show this help message and exit
+  -v, --version  get version

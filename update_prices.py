@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-import optparse, requests, logging, signal, sys, urllib, traceback, json,  re
+import optparse, requests, logging, signal, sys, urllib, traceback, json, re
 from bs4 import BeautifulSoup
 from ConfigParser import SafeConfigParser
 
@@ -22,6 +22,7 @@ def set_logging(ini_parser):
     sh = logging.StreamHandler(sys.stdout)
     sh.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
     logging.getLogger().addHandler(sh)
+    logging.getLogger().setLevel(logging.getLevelName(ini_parser.get("logging", "log_level").upper()))
 
 
 def parse_arguments(m_args):
@@ -45,13 +46,51 @@ def parse_arguments(m_args):
 def url_validator(url):
     regex = re.compile(
         r'^(?:http|ftp)s?://' # http:// or https://
-        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|' #domain...
-        r'localhost|' #localhost...
+        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|' # domain...
+        r'localhost|' # localhost...
         r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})' # ...or ip
         r'(?::\d+)?' # optional port
         r'(?:/?|[/?]\S+)$', re.IGNORECASE)
     
     return re.match(regex, url) is not None
+
+
+def get_token(session, api_url, login_page, username, password):
+    login_response = session.post(api_url + login_page, data = { "username": username, "password": password })
+    return json.loads(login_response.text)["token"]
+
+
+def get_products(session, token, api_url, product_list_page):
+    product_list_response = session.get(api_url + product_list_page, params = { "token": token })
+    return json.loads(product_list_response.text)["products"]
+
+
+def open_url_and_parse(session, url):
+    logging.debug("opening %s" % url)
+    return BeautifulSoup(session.get(url).text, features="html.parser")
+
+
+def get_product_url(parser, product, product_found_selector, product_link_selector, second_product_link_selector):
+    if not parser.select(product_found_selector):
+        logging.warning("product %s has not found" % product["name"])
+        return None
+
+    product_url = parser.select(product_link_selector)[0]["href"]
+    if not url_validator(product_url):
+        product_url = parser.select(second_product_link_selector)[0]["href"]
+        if not url_validator(product_url):
+            logging.warning("%s is not valid url for product %s" % (product_url, product["name"]))
+            return None
+
+    return product_url
+
+
+def get_product_identification(product):
+    return "%s (product ID: %s)" % (product["name"], product["product_id"])
+
+
+def get_min_accepted_price(product, vat, minimum_discount):
+    return float(product["mrp_price"]) * (1 + vat) * (1 + minimum_discount)
 
 
 def main(m_args=None):
@@ -88,71 +127,59 @@ def main(m_args=None):
     PRODUCT_NAME_SELECTOR = ini_parser.get("selectors", "product_name_selector")
     PRODUCT_FOUND_SELECTOR = ini_parser.get("selectors", "product_found_selector")
 
+    credentials_ini_parser = SafeConfigParser()
+    credentials_ini_parser.read(CREDENTIAL_INI_FILE_PATH)
+
+    # credentials
+    USERNAME = credentials_ini_parser.get("authentication", "user_name")
+    PASSWORD = credentials_ini_parser.get("authentication", "password")
+
     set_logging(ini_parser)
     logging.info("starting")
     
-    credentials_ini_parser = SafeConfigParser()
-    credentials_ini_parser.read(CREDENTIAL_INI_FILE_PATH)
-    
     try:
         with requests.Session() as session:
-            login_response = session.post(API_URL + LOGIN_PAGE, data = { "username": credentials_ini_parser.get("authentication", "user_name"), "password": credentials_ini_parser.get("authentication", "password") })
-            token = json.loads(login_response.text)["token"]
-            product_list_response = session.get(API_URL + PRODUCT_LIST_PAGE,  params = { "token": token })
-            products = json.loads(product_list_response.text)["products"]
+            token = get_token(session, API_URL, LOGIN_PAGE, USERNAME, PASSWORD)
+
+            products = get_products(session, token, API_URL, PRODUCT_LIST_PAGE)
             
             for product in products:
-                # TODO: remove restrictions
-                if float(product["price"]) < 1000:
-                    continue
-                if product["product_id"] != "560":
-                    continue
-                
                 try:
-                    url = "%s/?%s" % (SEARCH_URL, urllib.urlencode({ SEARCH_VAR_NAME: product["name"] }))
-                    logging.debug("opening %s" % url)
-                    search_response = session.get(url)
-                    bs = BeautifulSoup(search_response.text, features = "html.parser")
-                    
-                    if not bs.select(PRODUCT_FOUND_SELECTOR):
-                        logging.warning("product %s has not found" % product["name"])
+                    parser = open_url_and_parse(session, "%s/?%s" % (SEARCH_URL, urllib.urlencode({ SEARCH_VAR_NAME: product["name"] })))
+
+                    product_url = get_product_url(parser, product, PRODUCT_FOUND_SELECTOR, PRODUCT_LINK_SELECTOR, SECOND_PRODUCT_LINK_SELECTOR)
+                    if product_url is None:
                         continue
-                        
-                    product_url = bs.select(PRODUCT_LINK_SELECTOR)[0]["href"]
-                    if not url_validator(product_url):
-                        product_url = bs.select(SECOND_PRODUCT_LINK_SELECTOR)[0]["href"]
-                        if not url_validator(product_url):
-                            logging.warning("%s is not valid url for product %s" % (product_url,  product["name"]))
-                            continue
-                    logging.debug("opening %s" % product_url)
-                    product_response = session.get(product_url)
-                    bs = BeautifulSoup(product_response.text, features = "html.parser")
-                    
-                    best_price_array = bs.select(PRODUCT_PRICE_SELECTOR)[0].contents[0].rsplit(" ", 1)
-                    best_price = float(best_price_array[0].replace(" ", "").replace(",","."))
+
+                    parser = open_url_and_parse(session, product_url)
+
+                    best_price_array = parser.select(PRODUCT_PRICE_SELECTOR)[0].contents[0].rsplit(" ", 1)
+                    best_price = float(best_price_array[0].replace(" ", "").replace(",", "."))
                     best_price_currency = best_price_array[1]
-                    best_shop_name = bs.select(SHOP_NAME_SELECTOR)[0].contents[0].strip()
-                    product_name = bs.select(PRODUCT_NAME_SELECTOR)[0].contents[0]
-                    my_offer_exist = any(MY_SHOP_NAME in shop_name for shop_name in [tag.contents[0] for tag in bs.select(SHOP_NAME_SELECTOR)])
+                    best_shop_name = parser.select(SHOP_NAME_SELECTOR)[0].contents[0].strip()
+                    product_name = parser.select(PRODUCT_NAME_SELECTOR)[0].contents[0]
+                    my_offer_exist = any(MY_SHOP_NAME in shop_name for shop_name in [tag.contents[0] for tag in parser.select(SHOP_NAME_SELECTOR)])
+                    min_accepted_price = get_min_accepted_price(product, VAT, MINIMUM_DISCOUNT)
+
+                    logging.debug("Heureka product's name is %s" % product_name)
+                    logging.info("best price for %s is %.2f %s from %s (accepted minimum price: %.2f €)" % (get_product_identification(product), best_price, best_price_currency, best_shop_name, min_accepted_price))
                     
-                    logging.info("best price for %s (%s) is %.2f %s from %s" % (product["name"], product_name, best_price, best_price_currency, best_shop_name))
-                    
-                    new_price = best_price -  UNDER_BEST_PRICE_AMOUNT
+                    new_price = best_price - UNDER_BEST_PRICE_AMOUNT
                     if (my_offer_exist and 
                         best_shop_name != MY_SHOP_NAME and 
-                        best_price < float(product["price"]) and 
+                        best_price <= float(product["price"]) and
                         float(product["mrp_price"]) > 0 and 
-                        new_price >= float(product["mrp_price"]) * (1 + VAT) * (1 + MINIMUM_DISCOUNT)
+                        new_price >= min_accepted_price
                     ):
-                        logging.info("price changing from %.2f to %.2f" % (float(product["price"]),  new_price))
+                        logging.info("%s price changing from %.2f € to %.2f €" % (get_product_identification(product), float(product["price"]),  new_price))
                         if PRICE_UPDATE_ENABLED == "1":
                             product_update_response = session.post(API_URL + PRODUCT_UPDATE_PAGE, params = { "token": token },  data = { "product_id": product["product_id"], "price":  new_price})
                             if "success" in json.loads(product_update_response.text):
-                                logging.info("price update has been successful")
+                                logging.info("%s price update has been successful" % get_product_identification(product))
                             else:
-                                logging.error("price update has been unsuccessful")
+                                logging.error("%s price update has been unsuccessful" % get_product_identification(product))
                         else:
-                            logging.warning("price update is disabled")
+                            logging.warning("%s price update is disabled" % get_product_identification(product))
                         
                 except:
                     logging.error("error: %s" % traceback.format_exc(sys.exc_info()[2]))
@@ -166,4 +193,3 @@ def main(m_args=None):
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
     main()
-
