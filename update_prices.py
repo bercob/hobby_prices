@@ -14,7 +14,7 @@ import os
 from bs4 import BeautifulSoup
 from ConfigParser import SafeConfigParser
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 AUTHOR = "Balogh Peter <bercob@gmail.com>"
 
 
@@ -104,6 +104,13 @@ def get_min_accepted_price(product, vat, minimum_discount):
     return float(product["mrp_price"]) * (1 + vat) * (1 + minimum_discount)
 
 
+def get_product_price(product):
+    if 0 < float(product["special"]) < float(product["price"]):
+        return float(product["special"])
+    else:
+        return float(product["price"])
+
+
 def main(m_args=None):
     reload(sys)
     sys.setdefaultencoding("utf8")
@@ -160,29 +167,52 @@ def main(m_args=None):
 
                     product_url = get_product_url(parser, product, PRODUCT_FOUND_SELECTOR, PRODUCT_LINK_SELECTOR, SECOND_PRODUCT_LINK_SELECTOR)
                     if product_url is None:
+                        logging.error("Product URL %s has been not found" % (product_url))
                         continue
 
                     parser = open_url_and_parse(session, product_url)
 
-                    best_price_array = parser.select(PRODUCT_PRICE_SELECTOR)[0].contents[0].rsplit(" ", 1)
+                    product_prices = parser.select(PRODUCT_PRICE_SELECTOR)
+                    if product_prices is None or len(product_prices) == 0:
+                        logging.error("Error parsing product prices")
+                        continue
+                    best_price_array = product_prices[0].contents[0].rsplit(" ", 1)
                     best_price = float(best_price_array[0].replace(" ", "").replace(",", "."))
                     best_price_currency = best_price_array[1]
                     best_shop_name = parser.select(SHOP_NAME_SELECTOR)[0].contents[0].strip()
+
+                    second_best_price = second_best_price_currency = None
+                    if len(product_prices) > 1:
+                        second_best_price_array = product_prices[1].contents[0].rsplit(" ", 1)
+                        second_best_price = float(second_best_price_array[0].replace(" ", "").replace(",", "."))
+                        second_best_price_currency = second_best_price_array[1]
+
                     product_name = parser.select(PRODUCT_NAME_SELECTOR)[0].contents[0]
                     my_offer_exist = any(MY_SHOP_NAME in shop_name for shop_name in [tag.contents[0] for tag in parser.select(SHOP_NAME_SELECTOR)])
                     min_accepted_price = get_min_accepted_price(product, VAT, MINIMUM_DISCOUNT)
 
                     logging.debug("Heureka product's name is %s" % product_name)
-                    logging.info("best price for %s is %.2f %s from %s (accepted minimum price: %.2f €)" % (get_product_identification(product), best_price, best_price_currency, best_shop_name, min_accepted_price))
-                    
-                    new_price = best_price - UNDER_BEST_PRICE_AMOUNT
-                    if (my_offer_exist and 
-                        best_shop_name != MY_SHOP_NAME and 
-                        best_price <= float(product["price"]) and
-                        float(product["mrp_price"]) > 0 and 
-                        new_price >= min_accepted_price
-                    ):
-                        logging.info("%s price changing from %.2f € to %.2f €" % (get_product_identification(product), float(product["price"]),  new_price))
+                    logging.info("The best price for %s is %.2f %s from %s (accepted minimum price: %.2f €)" % (get_product_identification(product), best_price, best_price_currency, best_shop_name, min_accepted_price))
+                    if best_shop_name == MY_SHOP_NAME and second_best_price is not None:
+                        logging.info("The second best price for %s is %.2f %s" % (get_product_identification(product), second_best_price, second_best_price_currency))
+
+                    if not my_offer_exist or float(product["mrp_price"]) <= 0:
+                        logging.info('My offer does not exist')
+                        continue
+
+                    if float(product["mrp_price"]) <= 0:
+                        logging.info('MRP price is not set (%s)' % product["mrp_price"])
+                        continue
+
+                    new_price = None
+                    if best_shop_name == MY_SHOP_NAME:
+                        if second_best_price is not None:
+                            new_price = second_best_price - UNDER_BEST_PRICE_AMOUNT
+                    else:
+                        new_price = best_price - UNDER_BEST_PRICE_AMOUNT
+
+                    if new_price is not None and new_price != get_product_price(product) and new_price >= min_accepted_price:
+                        logging.info("%s price changing from %.2f € to %.2f €" % (get_product_identification(product), get_product_price(product), new_price))
                         if PRICE_UPDATE_ENABLED == "1":
                             product_update_response = session.post(API_URL + PRODUCT_UPDATE_PAGE, params = { "token": token },  data = { "product_id": product["product_id"], "price":  new_price})
                             if "success" in json.loads(product_update_response.text):
