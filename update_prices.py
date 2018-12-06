@@ -14,7 +14,7 @@ import os
 from bs4 import BeautifulSoup
 from ConfigParser import SafeConfigParser
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 AUTHOR = "Balogh Peter <bercob@gmail.com>"
 
 
@@ -106,9 +106,9 @@ def get_min_accepted_price(product, vat, minimum_discount):
 
 def get_product_price(product):
     if 0 < float(product["special"]) < float(product["price"]):
-        return float(product["special"])
+        return round(float(product["special"]), 2)
     else:
-        return float(product["price"])
+        return round(float(product["price"]), 2)
 
 
 def main(m_args=None):
@@ -196,7 +196,7 @@ def main(m_args=None):
                     if best_shop_name == MY_SHOP_NAME and second_best_price is not None:
                         logging.info("The second best price for %s is %.2f %s" % (get_product_identification(product), second_best_price, second_best_price_currency))
 
-                    if not my_offer_exist or float(product["mrp_price"]) <= 0:
+                    if not my_offer_exist:
                         logging.info('My offer does not exist')
                         continue
 
@@ -207,9 +207,9 @@ def main(m_args=None):
                     new_price = None
                     if best_shop_name == MY_SHOP_NAME:
                         if second_best_price is not None:
-                            new_price = second_best_price - UNDER_BEST_PRICE_AMOUNT
+                            new_price = round(second_best_price - UNDER_BEST_PRICE_AMOUNT, 2)
                     else:
-                        new_price = best_price - UNDER_BEST_PRICE_AMOUNT
+                        new_price = round(best_price - UNDER_BEST_PRICE_AMOUNT, 2)
 
                     if new_price is not None and new_price != get_product_price(product) and new_price >= min_accepted_price:
                         logging.info("%s price changing from %.2f € to %.2f €" % (get_product_identification(product), get_product_price(product), new_price))
