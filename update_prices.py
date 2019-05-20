@@ -15,7 +15,7 @@ from bs4 import BeautifulSoup
 from ConfigParser import SafeConfigParser
 from logging.handlers import TimedRotatingFileHandler
 
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 AUTHOR = "Balogh Peter <bercob@gmail.com>"
 
 
@@ -36,7 +36,7 @@ def set_logging(ini_parser):
 
     logging.getLogger().setLevel(logging.getLevelName(ini_parser.get("logging", "log_level").upper()))
     
-    handler = TimedRotatingFileHandler(path, when = "d", interval = 1, backupCount = 7)
+    handler = TimedRotatingFileHandler(path, when = "midnight", interval = 1, backupCount = 7)
     handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
     logging.getLogger().addHandler(handler)
 
