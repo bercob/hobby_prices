@@ -15,7 +15,7 @@ from bs4 import BeautifulSoup
 from ConfigParser import SafeConfigParser
 from logging.handlers import TimedRotatingFileHandler
 
-VERSION = "1.2.1"
+VERSION = "1.3.0"
 AUTHOR = "Balogh Peter <bercob@gmail.com>"
 
 
@@ -196,8 +196,13 @@ def main(m_args=None):
                     my_offer_exist = any(MY_SHOP_NAME in shop_name for shop_name in [tag.contents[0] for tag in parser.select(SHOP_NAME_SELECTOR)])
                     min_accepted_price = get_min_accepted_price(product, VAT, MINIMUM_DISCOUNT)
 
+                    if product["limit"] is not None and float(product["limit"]) >= 0:
+                        under_best_price_amount = float(product["limit"])
+                    else:
+                        under_best_price_amount = UNDER_BEST_PRICE_AMOUNT
+
                     logging.debug("Heureka product's name is %s" % product_name)
-                    logging.info("The best price for %s is %.2f %s from %s (accepted minimum price: %.2f €)" % (get_product_identification(product), best_price, best_price_currency, best_shop_name, min_accepted_price))
+                    logging.info("The best price for %s is %.2f %s from %s (accepted minimum price: %.2f €, limit: %.2f €)" % (get_product_identification(product), best_price, best_price_currency, best_shop_name, min_accepted_price, under_best_price_amount))
                     if best_shop_name == MY_SHOP_NAME and second_best_price is not None:
                         logging.info("The second best price for %s is %.2f %s" % (get_product_identification(product), second_best_price, second_best_price_currency))
 
@@ -212,9 +217,9 @@ def main(m_args=None):
                     new_price = None
                     if best_shop_name == MY_SHOP_NAME:
                         if second_best_price is not None:
-                            new_price = round(second_best_price - UNDER_BEST_PRICE_AMOUNT, 2)
+                            new_price = round(second_best_price - under_best_price_amount, 2)
                     else:
-                        new_price = round(best_price - UNDER_BEST_PRICE_AMOUNT, 2)
+                        new_price = round(best_price - under_best_price_amount, 2)
 
                     if new_price is not None and new_price != get_product_price(product) and new_price >= min_accepted_price:
                         logging.info("%s price changing from %.2f € to %.2f €" % (get_product_identification(product), get_product_price(product), new_price))
@@ -226,7 +231,7 @@ def main(m_args=None):
                                 logging.error("%s price update has been unsuccessful" % get_product_identification(product))
                         else:
                             logging.warning("%s price update is disabled" % get_product_identification(product))
-                        
+
                 except:
                     logging.error("error: %s" % traceback.format_exc(sys.exc_info()[2]))
                     continue

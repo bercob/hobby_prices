@@ -1,4 +1,4 @@
 ini/credentials.ini
 ini/update_prices.ini
-log/*.log
+log/
 .idea
