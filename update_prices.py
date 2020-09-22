@@ -15,7 +15,7 @@ from bs4 import BeautifulSoup
 from ConfigParser import SafeConfigParser
 from logging.handlers import TimedRotatingFileHandler
 
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 AUTHOR = "Balogh Peter <bercob@gmail.com>"
 
 
@@ -36,14 +36,14 @@ def set_logging(ini_parser):
 
     logging.getLogger().setLevel(logging.getLevelName(ini_parser.get("logging", "log_level").upper()))
     
-    handler = TimedRotatingFileHandler(path, when = "midnight", interval = 1, backupCount = 7)
+    handler = TimedRotatingFileHandler(path, when="midnight", interval=1, backupCount=7)
     handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
     logging.getLogger().addHandler(handler)
 
 
 def parse_arguments(m_args):
-    parser = optparse.OptionParser(usage = "%s <ini file path>\n\nupdate prices\n\nauthor: %s" % (__file__, AUTHOR))
-    parser.add_option("-v", "--version", action="store_true", help = "get version", default = False)
+    parser = optparse.OptionParser(usage="%s <ini file path>\n\nupdate prices\n\nauthor: %s" % (__file__, AUTHOR))
+    parser.add_option("-v", "--version", action="store_true", help="get version", default=False)
     (options, args) = parser.parse_args()
 
     if m_args is not None:
@@ -72,12 +72,12 @@ def url_validator(url):
 
 
 def get_token(session, api_url, login_page, username, password):
-    login_response = session.post(api_url + login_page, data = { "username": username, "password": password })
+    login_response = session.post(api_url + login_page, data={"username": username, "password": password})
     return json.loads(login_response.text)["token"]
 
 
 def get_products(session, token, api_url, product_list_page):
-    product_list_response = session.get(api_url + product_list_page, params = { "token": token })
+    product_list_response = session.get(api_url + product_list_page, params={"token": token})
     return json.loads(product_list_response.text)["products"]
 
 
@@ -86,19 +86,34 @@ def open_url_and_parse(session, url):
     return BeautifulSoup(session.get(url).text, features="html.parser")
 
 
-def get_product_url(parser, product, product_found_selector, product_link_selector, second_product_link_selector):
+def get_product_url(parser, product, product_found_selector, product_link_selector, second_product_link_selector, search_url):
+    # find the searched product by exact name
+
+    exact_name_parser = parser
+    search_results_tag = exact_name_parser.find("div", {"id": "search"})
+    if search_results_tag is not None:
+        for tag in search_results_tag.find_all("a", class_="js-serpSpamScore", string=product["name"]):
+            if valid_product_url(tag["href"], search_url):
+                return tag["href"]
+
+    # find the searched product by selectors if product has been not found by exact name
+
     if not parser.select(product_found_selector):
         logging.warning("product %s has not found" % product["name"])
         return None
 
     product_url = parser.select(product_link_selector)[0]["href"]
-    if not url_validator(product_url):
+    if not valid_product_url(product_url, search_url):
         product_url = parser.select(second_product_link_selector)[0]["href"]
-        if not url_validator(product_url):
+        if not valid_product_url(product_url, search_url):
             logging.warning("%s is not valid url for product %s" % (product_url, product["name"]))
             return None
 
     return product_url
+
+
+def valid_product_url(product_url, search_url):
+    return url_validator(product_url) and "%s/exit" % search_url not in product_url
 
 
 def get_product_identification(product):
@@ -168,11 +183,11 @@ def main(m_args=None):
             
             for product in products:
                 try:
-                    parser = open_url_and_parse(session, "%s/?%s" % (SEARCH_URL, urllib.urlencode({ SEARCH_VAR_NAME: product["name"] })))
+                    parser = open_url_and_parse(session, "%s/?%s" % (SEARCH_URL, urllib.urlencode({SEARCH_VAR_NAME: product["name"]})))
 
-                    product_url = get_product_url(parser, product, PRODUCT_FOUND_SELECTOR, PRODUCT_LINK_SELECTOR, SECOND_PRODUCT_LINK_SELECTOR)
+                    product_url = get_product_url(parser, product, PRODUCT_FOUND_SELECTOR, PRODUCT_LINK_SELECTOR, SECOND_PRODUCT_LINK_SELECTOR, SEARCH_URL)
                     if product_url is None:
-                        logging.error("Product URL %s has been not found" % (product_url))
+                        logging.error("URL for product %s has been not found" % product["name"])
                         continue
 
                     parser = open_url_and_parse(session, product_url)
@@ -207,7 +222,7 @@ def main(m_args=None):
                         logging.info("The second best price for %s is %.2f %s" % (get_product_identification(product), second_best_price, second_best_price_currency))
 
                     if not my_offer_exist:
-                        logging.info('My offer does not exist')
+                        logging.info("My offer does not exist for product %s" % product["name"])
                         continue
 
                     if float(product["mrp_price"]) <= 0:
@@ -224,7 +239,7 @@ def main(m_args=None):
                     if new_price is not None and new_price != get_product_price(product) and new_price >= min_accepted_price:
                         logging.info("%s price changing from %.2f € to %.2f €" % (get_product_identification(product), get_product_price(product), new_price))
                         if PRICE_UPDATE_ENABLED == "1":
-                            product_update_response = session.post(API_URL + PRODUCT_UPDATE_PAGE, params = { "token": token },  data = { "product_id": product["product_id"], "price":  new_price})
+                            product_update_response = session.post(API_URL + PRODUCT_UPDATE_PAGE, params={"token": token},  data={"product_id": product["product_id"], "price":  new_price})
                             if "success" in json.loads(product_update_response.text):
                                 logging.info("%s price update has been successful" % get_product_identification(product))
                             else:
