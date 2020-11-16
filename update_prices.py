@@ -15,7 +15,7 @@ from bs4 import BeautifulSoup
 from ConfigParser import SafeConfigParser
 from logging.handlers import TimedRotatingFileHandler
 
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 AUTHOR = "Balogh Peter <bercob@gmail.com>"
 
 
@@ -172,11 +172,21 @@ def main(m_args=None):
     USERNAME = credentials_ini_parser.get("authentication", "user_name")
     PASSWORD = credentials_ini_parser.get("authentication", "password")
 
+    # cookies
+    COOKIES_DOMAIN = credentials_ini_parser.get("cookies", "domain")
+    BOTHUNTER_COOKIE = credentials_ini_parser.get("cookies", "bothunter")
+
     set_logging(ini_parser)
     logging.info("starting")
     
     try:
         with requests.Session() as session:
+            if BOTHUNTER_COOKIE:
+                bothunter_cookie_obj = requests.cookies.create_cookie(domain=COOKIES_DOMAIN,
+                                                                      name='bothunter',
+                                                                      value=BOTHUNTER_COOKIE)
+                session.cookies.set_cookie(bothunter_cookie_obj)
+
             token = get_token(session, API_URL, LOGIN_PAGE, USERNAME, PASSWORD)
 
             products = get_products(session, token, API_URL, PRODUCT_LIST_PAGE)
