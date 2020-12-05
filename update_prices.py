@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 
 import optparse
@@ -11,11 +11,12 @@ import traceback
 import json
 import re
 import os
+import time
 from bs4 import BeautifulSoup
 from ConfigParser import SafeConfigParser
 from logging.handlers import TimedRotatingFileHandler
 
-VERSION = "1.5.0"
+VERSION = "1.6.0"
 AUTHOR = "Balogh Peter <bercob@gmail.com>"
 
 
@@ -81,7 +82,9 @@ def get_products(session, token, api_url, product_list_page):
     return json.loads(product_list_response.text)["products"]
 
 
-def open_url_and_parse(session, url):
+def open_url_and_parse(session, url, request_sleep):
+    logging.debug("sleeping %d seconds" % request_sleep)
+    time.sleep(request_sleep)
     logging.debug("opening %s" % url)
     return BeautifulSoup(session.get(url).text, features="html.parser")
 
@@ -144,6 +147,7 @@ def main(m_args=None):
     PRICE_UPDATE_ENABLED = ini_parser.get("general", "price_update_enabled")
     VAT = float(ini_parser.get("general", "vat"))
     MY_SHOP_NAME = ini_parser.get("general", "my_shop_name")
+    REQUEST_SLEEP = int(ini_parser.get("general", "request_sleep"))
     # credentials
     CREDENTIAL_INI_FILE_PATH = os.path.join(ini_parser.get("credentials", "ini_file_dir"), ini_parser.get("credentials", "ini_file_name"))
     # urls
@@ -193,14 +197,14 @@ def main(m_args=None):
             
             for product in products:
                 try:
-                    parser = open_url_and_parse(session, "%s/?%s" % (SEARCH_URL, urllib.urlencode({SEARCH_VAR_NAME: product["name"]})))
+                    parser = open_url_and_parse(session, "%s/?%s" % (SEARCH_URL, urllib.urlencode({SEARCH_VAR_NAME: product["name"]})), REQUEST_SLEEP)
 
                     product_url = get_product_url(parser, product, PRODUCT_FOUND_SELECTOR, PRODUCT_LINK_SELECTOR, SECOND_PRODUCT_LINK_SELECTOR, SEARCH_URL)
                     if product_url is None:
                         logging.error("URL for product %s has been not found" % product["name"])
                         continue
 
-                    parser = open_url_and_parse(session, product_url)
+                    parser = open_url_and_parse(session, product_url, REQUEST_SLEEP)
 
                     product_prices = parser.select(PRODUCT_PRICE_SELECTOR)
                     if product_prices is None or len(product_prices) == 0:
