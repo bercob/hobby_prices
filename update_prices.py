@@ -16,7 +16,7 @@ from bs4 import BeautifulSoup
 from ConfigParser import SafeConfigParser
 from logging.handlers import TimedRotatingFileHandler
 
-VERSION = "1.6.0"
+VERSION = "1.7.0"
 AUTHOR = "Balogh Peter <bercob@gmail.com>"
 
 
@@ -134,6 +134,10 @@ def get_product_price(product):
         return round(float(product["price"]), 2)
 
 
+def bot_hunter_page(parser, bot_hunter_title):
+    return parser.title.contents[0] == bot_hunter_title
+
+
 def main(m_args=None):
     reload(sys)
     sys.setdefaultencoding("utf8")
@@ -148,6 +152,7 @@ def main(m_args=None):
     VAT = float(ini_parser.get("general", "vat"))
     MY_SHOP_NAME = ini_parser.get("general", "my_shop_name")
     REQUEST_SLEEP = int(ini_parser.get("general", "request_sleep"))
+    BOT_HUNTER_TITLE = ini_parser.get("general", "bot_hunter_title")
     # credentials
     CREDENTIAL_INI_FILE_PATH = os.path.join(ini_parser.get("credentials", "ini_file_dir"), ini_parser.get("credentials", "ini_file_name"))
     # urls
@@ -178,18 +183,18 @@ def main(m_args=None):
 
     # cookies
     COOKIES_DOMAIN = credentials_ini_parser.get("cookies", "domain")
-    BOTHUNTER_COOKIE = credentials_ini_parser.get("cookies", "bothunter")
+    BOT_HUNTER_COOKIE = credentials_ini_parser.get("cookies", "bot_hunter")
 
     set_logging(ini_parser)
     logging.info("starting")
     
     try:
         with requests.Session() as session:
-            if BOTHUNTER_COOKIE:
-                bothunter_cookie_obj = requests.cookies.create_cookie(domain=COOKIES_DOMAIN,
+            if BOT_HUNTER_COOKIE:
+                bot_hunter_cookie_obj = requests.cookies.create_cookie(domain=COOKIES_DOMAIN,
                                                                       name='bothunter',
-                                                                      value=BOTHUNTER_COOKIE)
-                session.cookies.set_cookie(bothunter_cookie_obj)
+                                                                      value=BOT_HUNTER_COOKIE)
+                session.cookies.set_cookie(bot_hunter_cookie_obj)
 
             token = get_token(session, API_URL, LOGIN_PAGE, USERNAME, PASSWORD)
 
@@ -198,7 +203,10 @@ def main(m_args=None):
             for product in products:
                 try:
                     parser = open_url_and_parse(session, "%s/?%s" % (SEARCH_URL, urllib.urlencode({SEARCH_VAR_NAME: product["name"]})), REQUEST_SLEEP)
-
+                    if bot_hunter_page(parser, BOT_HUNTER_TITLE):
+                        logging.warning("Bot Hunter page has been occurred")
+                        break
+                    
                     product_url = get_product_url(parser, product, PRODUCT_FOUND_SELECTOR, PRODUCT_LINK_SELECTOR, SECOND_PRODUCT_LINK_SELECTOR, SEARCH_URL)
                     if product_url is None:
                         logging.error("URL for product %s has been not found" % product["name"])
