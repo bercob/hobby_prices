@@ -86,7 +86,9 @@ def open_url_and_parse(session, url, request_sleep):
     logging.debug("sleeping %d seconds" % request_sleep)
     time.sleep(request_sleep)
     logging.debug("opening %s" % url)
-    return BeautifulSoup(session.get(url).text, features="html.parser")
+    response = session.get(url)
+    logging.debug("Response URL: %s" % response.url)
+    return BeautifulSoup(response.text, features="html.parser")
 
 
 def get_product_url(parser, product, product_found_selector, product_link_selector, second_product_link_selector, search_url):
