@@ -207,6 +207,7 @@ def main(m_args=None):
                     parser = open_url_and_parse(session, "%s/?%s" % (SEARCH_URL, urllib.urlencode({SEARCH_VAR_NAME: product["name"]})), REQUEST_SLEEP)
                     if bot_hunter_page(parser, BOT_HUNTER_TITLE):
                         logging.warning("Bot Hunter page has been occurred")
+                        logging.debug(parser.contents)
                         break
                     
                     product_url = get_product_url(parser, product, PRODUCT_FOUND_SELECTOR, PRODUCT_LINK_SELECTOR, SECOND_PRODUCT_LINK_SELECTOR, SEARCH_URL)
