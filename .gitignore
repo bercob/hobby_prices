@@ -2,3 +2,5 @@ ini/credentials.ini
 ini/update_prices.ini
 log/
 .idea
+*.pyc
+.DS_Store
