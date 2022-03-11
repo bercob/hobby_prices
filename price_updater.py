@@ -12,7 +12,7 @@ import time
 from bs4 import BeautifulSoup
 from ConfigParser import SafeConfigParser
 
-DEVELOPMENT = True
+DEVELOPMENT = False
 
 
 class PriceUpdater:
@@ -40,13 +40,6 @@ class PriceUpdater:
         # price
         self.minimum_discount = float(ini_parser.get("price", "minimum_discount"))
         self.under_best_price_amount = float(ini_parser.get("price", "under_best_price_amount"))
-        # selectors
-        self.product_link_selector = ini_parser.get("selectors", "product_link_selector")
-        self.second_product_link_selector = ini_parser.get("selectors", "second_product_link_selector")
-        self.product_price_selector = ini_parser.get("selectors", "product_price_selector")
-        self.shop_name_selector = ini_parser.get("selectors", "shop_name_selector")
-        self.product_name_selector = ini_parser.get("selectors", "product_name_selector")
-        self.product_found_selector = ini_parser.get("selectors", "product_found_selector")
 
         self.credentials_ini_parser = SafeConfigParser()
         self.credentials_ini_parser.read(self.credential_ini_file_path)
@@ -88,13 +81,9 @@ class PriceUpdater:
         return BeautifulSoup(response.text, features="html.parser")
 
     def __get_product_url(self, parser, product):
-        # find the searched product by exact name
-        exact_name_parser = parser
-        search_results_tag = exact_name_parser.find("div", class_="c-product-list")
-        if search_results_tag is not None:
-            for tag in search_results_tag.find_all("a", class_="c-product__link"):
-                if product["name"] in tag.contents[0] and self.valid_product_url(tag["href"], self.search_url):
-                    return tag["href"]
+        for tag in parser.select("a.c-product__link"):
+            if product["name"] in tag.contents[0] and self.valid_product_url(tag["href"], self.search_url):
+                return tag["href"]
 
     def valid_product_url(self, product_url, search_url):
         return self.__url_validator(product_url) and "%s/exit" % search_url not in product_url
@@ -104,7 +93,7 @@ class PriceUpdater:
         return "%s (product ID: %s)" % (product["name"], product["product_id"])
 
     def __get_min_accepted_price(self, product):
-        return float(product["mrp_price"]) * (1 + self.vat) * (1 + self.minimum_discount)
+        return self.__get_mrp_price(product) * (1 + self.vat) * (1 + self.minimum_discount)
 
     @staticmethod
     def __get_product_price(product):
@@ -138,6 +127,49 @@ class PriceUpdater:
         else:
             logging.warning("%s price update is disabled" % self.__get_product_identification(product))
 
+    @staticmethod
+    def __get_shop_offers(parser):
+        offers = parser.select("section.c-offer")
+        shop_offers = []
+        for offer in offers:
+            offer_price_span = offer.select("span.c-offer__price")
+            if len(offer_price_span) > 0:
+                price_array = offer_price_span[0].contents[0].rsplit(" ", 1)
+                price = float(price_array[0].replace(" ", "").replace(",", "."))
+                shop_offers.append((price, price_array[1], offer.select("a.c-offer__shop-name")[0].contents[0]))
+        shop_offers.sort(key=lambda tup: tup[0])
+        return shop_offers
+
+    @staticmethod
+    def __get_product_name(parser):
+        return parser.select("h1.c-product-info__name")[0].contents[0]
+
+    def __is_my_offer_exist(self, shop_offers):
+        return self.my_shop_name in [shop[2] for shop in shop_offers]
+
+    def __get_under_best_price_amount(self, product):
+        if product["limit"] is not None and float(product["limit"]) >= 0:
+            return float(product["limit"])
+        else:
+            return self.under_best_price_amount
+
+    def __get_new_price(self, product, best_price, best_shop_name, second_best_price, second_best_price_currency, under_best_price_amount):
+        if best_shop_name == self.my_shop_name:
+            if second_best_price is not None:
+                logging.info("The second best price for %s is %.2f %s" % (self.__get_product_identification(product),
+                                                                          second_best_price,
+                                                                          second_best_price_currency))
+                return round(second_best_price - under_best_price_amount, 2)
+        else:
+            return round(best_price - under_best_price_amount, 2)
+
+    @staticmethod
+    def __get_mrp_price(product):
+        try:
+            return float(product["mrp_price"])
+        except ValueError:
+            return 0
+
     def __process_product(self, product, parser, session, token):
         product_url = self.__get_product_url(parser, product)
         if product_url is None:
@@ -146,57 +178,38 @@ class PriceUpdater:
 
         parser = self.__open_url_and_parse(session, product_url)
 
-        product_prices = parser.select(self.product_price_selector)
-        if product_prices is None or len(product_prices) == 0:
+        shop_offers = self.__get_shop_offers(parser)
+        if len(shop_offers) == 0:
             logging.error("Error parsing product prices")
             return
-        best_price_array = product_prices[0].contents[0].rsplit(" ", 1)
-        best_price = float(best_price_array[0].replace(" ", "").replace(",", "."))
-        best_price_currency = best_price_array[1]
-        best_shop_name = parser.select(self.shop_name_selector)[0].contents[0].strip()
 
-        second_best_price = second_best_price_currency = None
-        if len(product_prices) > 1:
-            second_best_price_array = product_prices[1].contents[0].rsplit(" ", 1)
-            second_best_price = float(second_best_price_array[0].replace(" ", "").replace(",", "."))
-            second_best_price_currency = second_best_price_array[1]
+        best_price = shop_offers[0][0]
+        best_price_currency = shop_offers[0][1]
+        best_shop_name = shop_offers[0][2]
 
-        product_name = parser.select(self.product_name_selector)[0].contents[0]
-        my_offer_exist = any(self.my_shop_name in shop_name for shop_name in
-                             [tag.contents[0] for tag in parser.select(self.shop_name_selector)])
+        second_best_price, second_best_price_currency = [shop_offers[0][0], shop_offers[0][1]] if len(shop_offers) > 1 else [None, None]
+
+        product_name = self.__get_product_name(parser)
+        my_offer_exist = self.__is_my_offer_exist(shop_offers)
         min_accepted_price = self.__get_min_accepted_price(product)
-
-        if product["limit"] is not None and float(product["limit"]) >= 0:
-            under_best_price_amount = float(product["limit"])
-        else:
-            under_best_price_amount = self.under_best_price_amount
+        under_best_price_amount = self.__get_under_best_price_amount(product)
 
         logging.debug("Heureka product's name is %s" % product_name)
-        logging.info("The best price for %s is %.2f %s from %s (accepted minimum price: %.2f €, limit: %.2f €)" % (self.__get_product_identification(product), 
-                                                                                                                   best_price, 
-                                                                                                                   best_price_currency, 
-                                                                                                                   best_shop_name, 
-                                                                                                                   min_accepted_price, 
+        logging.info("The best price for %s is %.2f %s from %s (accepted minimum price: %.2f €, limit: %.2f €)" % (self.__get_product_identification(product),
+                                                                                                                   best_price,
+                                                                                                                   best_price_currency,
+                                                                                                                   best_shop_name,
+                                                                                                                   min_accepted_price,
                                                                                                                    under_best_price_amount))
-        if best_shop_name == self.my_shop_name and second_best_price is not None:
-            logging.info("The second best price for %s is %.2f %s" % (self.__get_product_identification(product), 
-                                                                      second_best_price, 
-                                                                      second_best_price_currency))
-
         if not my_offer_exist:
             logging.info("My offer does not exist for product %s" % product["name"])
             return
 
-        if float(product["mrp_price"]) <= 0:
+        if self.__get_mrp_price(product) <= 0:
             logging.info('MRP price is not set (%s)' % product["mrp_price"])
             return
 
-        new_price = None
-        if best_shop_name == self.my_shop_name:
-            if second_best_price is not None:
-                new_price = round(second_best_price - under_best_price_amount, 2)
-        else:
-            new_price = round(best_price - under_best_price_amount, 2)
+        new_price = self.__get_new_price(product, best_price, best_shop_name, second_best_price, second_best_price_currency, under_best_price_amount)
 
         if new_price is not None and new_price != self.__get_product_price(product) and new_price >= min_accepted_price:
             self.__update_price(product, new_price, session, token)

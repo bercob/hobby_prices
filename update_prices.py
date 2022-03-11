@@ -10,7 +10,7 @@ from price_updater import PriceUpdater
 from logging.handlers import TimedRotatingFileHandler
 
 
-VERSION = "1.7.0"
+VERSION = "2.0.0"
 AUTHOR = "Balogh Peter <bercob@gmail.com>"
 
 
