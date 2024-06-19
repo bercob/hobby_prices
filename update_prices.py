@@ -1,53 +1,33 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
-import signal
-import sys
-import os
-import optparse
 import logging
-from ConfigParser import SafeConfigParser
-from price_updater import PriceUpdater
+import os
+import sys
+from argparse import ArgumentParser
+from configparser import RawConfigParser
 from logging.handlers import TimedRotatingFileHandler
 
+from price_updater import PriceUpdater
 
-VERSION = "2.0.0"
+VERSION = "3.0.0"
 AUTHOR = "Balogh Peter <bercob@gmail.com>"
 
 
-def signal_handler(signal, frame):
-    sys.exit(0)
+def parse_arguments():
+    parser = ArgumentParser(usage="%s <ini file path>\n\nupdate prices\n\nauthor: %s" % (__file__, AUTHOR))
+    parser.add_argument("ini_file_path", help="ini config file path")
+    parser.add_argument("-v", "--version", action="version", help="get version", version=VERSION)
+    return parser.parse_args()
 
 
-def help(parser):
-    parser.print_help()
-
-
-def parse_arguments(m_args=None):
-    parser = optparse.OptionParser(usage="%s <ini file path>\n\nupdate prices\n\nauthor: %s" % (__file__, AUTHOR))
-    parser.add_option("-v", "--version", action="store_true", help="get version", default=False)
-    (options, args) = parser.parse_args()
-
-    if m_args is not None:
-        args = m_args
-
-    if options.version:
-        print(VERSION)
-        sys.exit(0)
-
-    if len(args) == 0:
-        parser.error('ini file path is required')
-
-    return options, args
-
-
-def set_logging(ini_parser):
-    path = os.path.join(ini_parser.get("logging", "log_file_dir"), ini_parser.get("logging", "log_file_name"))
+def set_logging(parser):
+    path = os.path.join(parser.get("logging", "log_file_dir"), parser.get("logging", "log_file_name"))
 
     sh = logging.StreamHandler(sys.stdout)
     sh.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
     logging.getLogger().addHandler(sh)
 
-    logging.getLogger().setLevel(logging.getLevelName(ini_parser.get("logging", "log_level").upper()))
+    logging.getLogger().setLevel(logging.getLevelName(parser.get("logging", "log_level").upper()))
 
     handler = TimedRotatingFileHandler(path, when="midnight", interval=1, backupCount=7)
     handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
@@ -55,12 +35,9 @@ def set_logging(ini_parser):
 
 
 if __name__ == "__main__":
-    signal.signal(signal.SIGINT, signal_handler)
-    reload(sys)
-
-    (options, args) = parse_arguments()
-    ini_parser = SafeConfigParser()
-    ini_parser.read(args[0])
+    args = parse_arguments()
+    ini_parser = RawConfigParser()
+    ini_parser.read(args.ini_file_path)
     set_logging(ini_parser)
 
     price_updater = PriceUpdater(ini_parser)

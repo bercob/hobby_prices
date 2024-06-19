@@ -1,24 +1,23 @@
 # -*- coding: utf-8 -*-
 
-import sys
-import requests
-import logging
-import urllib
-import traceback
 import json
-import re
+import logging
 import os
+import re
+import sys
 import time
-from bs4 import BeautifulSoup
-from ConfigParser import SafeConfigParser
+import traceback
+from configparser import RawConfigParser
+from urllib.parse import urlencode
 
-DEVELOPMENT = False
+import requests
+from bs4 import BeautifulSoup
+
+DEVELOPMENT = os.getenv("DEVELOPMENT", "False").lower() in ("true", "1", "t")
 
 
 class PriceUpdater:
     def __init__(self, ini_parser):
-        sys.setdefaultencoding("utf8")
-
         # set constant variables
         # general
         self.price_update_enabled = ini_parser.get("general", "price_update_enabled")
@@ -27,8 +26,9 @@ class PriceUpdater:
         self.request_sleep = int(ini_parser.get("general", "request_sleep"))
         self.bot_hunter_title = ini_parser.get("general", "bot_hunter_title")
         # credentials
-        self.credential_ini_file_path = os.path.join(ini_parser.get("credentials", "ini_file_dir"), 
-                                                     ini_parser.get("credentials", "ini_file_name"))
+        self.credential_ini_file_path = os.path.join(
+            ini_parser.get("credentials", "ini_file_dir"), ini_parser.get("credentials", "ini_file_name")
+        )
         # urls
         self.api_url = ini_parser.get("urls", "api_url")
         self.search_url = ini_parser.get("urls", "search_url")
@@ -41,7 +41,7 @@ class PriceUpdater:
         self.minimum_discount = float(ini_parser.get("price", "minimum_discount"))
         self.under_best_price_amount = float(ini_parser.get("price", "under_best_price_amount"))
 
-        self.credentials_ini_parser = SafeConfigParser()
+        self.credentials_ini_parser = RawConfigParser()
         self.credentials_ini_parser.read(self.credential_ini_file_path)
 
         # credentials
@@ -51,21 +51,25 @@ class PriceUpdater:
         # cookies
         self.cookies_domain = self.credentials_ini_parser.get("cookies", "domain")
         self.bot_hunter_cookie = self.credentials_ini_parser.get("cookies", "bot_hunter")
-        
+
     @staticmethod
     def __url_validator(url):
         regex = re.compile(
-            r'^(?:http|ftp)s?://' # http:// or https://
-            r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|' # domain...
-            r'localhost|' # localhost...
-            r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})' # ...or ip
-            r'(?::\d+)?' # optional port
-            r'(?:/?|[/?]\S+)$', re.IGNORECASE)
+            r"^(?:http|ftp)s?://"  # http:// or https://
+            r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|"  # domain...
+            r"localhost|"  # localhost...
+            r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"  # ...or ip
+            r"(?::\d+)?"  # optional port
+            r"(?:/?|[/?]\S+)$",
+            re.IGNORECASE,
+        )
 
         return re.match(regex, url) is not None
 
     def __get_token(self, session):
-        login_response = session.post(self.api_url + self.login_page, data={"username": self.username, "password": self.password})
+        login_response = session.post(
+            self.api_url + self.login_page, data={"username": self.username, "password": self.password}
+        )
         return json.loads(login_response.text)["token"]
 
     def __get_products(self, session, token):
@@ -107,19 +111,19 @@ class PriceUpdater:
 
     def __set_bot_hunter_cookie(self, session):
         if self.bot_hunter_cookie:
-            bot_hunter_cookie_obj = requests.cookies.create_cookie(domain=self.cookies_domain,
-                                                                   name='bothunter',
-                                                                   value=self.bot_hunter_cookie)
-            session.cookies.set_cookie(bot_hunter_cookie_obj)
+            session.cookies.set("bothunter", self.bot_hunter_cookie, domain=self.cookies_domain)
 
     def __update_price(self, product, new_price, session, token):
-        logging.info("%s price changing from %.2f € to %.2f €" % (self.__get_product_identification(product),
-                                                                  self.__get_product_price(product),
-                                                                  new_price))
+        logging.info(
+            "%s price changing from %.2f € to %.2f €"
+            % (self.__get_product_identification(product), self.__get_product_price(product), new_price)
+        )
         if self.price_update_enabled == "1":
-            product_update_response = session.post(self.api_url + self.product_update_page,
-                                                   params={"token": token},
-                                                   data={"product_id": product["product_id"], "price": new_price})
+            product_update_response = session.post(
+                self.api_url + self.product_update_page,
+                params={"token": token},
+                data={"product_id": product["product_id"], "price": new_price},
+            )
             if "success" in json.loads(product_update_response.text):
                 logging.info("%s price update has been successful" % self.__get_product_identification(product))
             else:
@@ -153,12 +157,21 @@ class PriceUpdater:
         else:
             return self.under_best_price_amount
 
-    def __get_new_price(self, product, best_price, best_shop_name, second_best_price, second_best_price_currency, under_best_price_amount):
+    def __get_new_price(
+        self,
+        product,
+        best_price,
+        best_shop_name,
+        second_best_price,
+        second_best_price_currency,
+        under_best_price_amount,
+    ):
         if best_shop_name == self.my_shop_name:
             if second_best_price is not None:
-                logging.info("The second best price for %s is %.2f %s" % (self.__get_product_identification(product),
-                                                                          second_best_price,
-                                                                          second_best_price_currency))
+                logging.info(
+                    "The second best price for %s is %.2f %s"
+                    % (self.__get_product_identification(product), second_best_price, second_best_price_currency)
+                )
                 return round(second_best_price - under_best_price_amount, 2)
         else:
             return round(best_price - under_best_price_amount, 2)
@@ -187,7 +200,9 @@ class PriceUpdater:
         best_price_currency = shop_offers[0][1]
         best_shop_name = shop_offers[0][2]
 
-        second_best_price, second_best_price_currency = [shop_offers[0][0], shop_offers[0][1]] if len(shop_offers) > 1 else [None, None]
+        second_best_price, second_best_price_currency = (
+            [shop_offers[0][0], shop_offers[0][1]] if len(shop_offers) > 1 else [None, None]
+        )
 
         product_name = self.__get_product_name(parser)
         my_offer_exist = self.__is_my_offer_exist(shop_offers)
@@ -195,21 +210,28 @@ class PriceUpdater:
         under_best_price_amount = self.__get_under_best_price_amount(product)
 
         logging.debug("Heureka product's name is %s" % product_name)
-        logging.info("The best price for %s is %.2f %s from %s (accepted minimum price: %.2f €, limit: %.2f €)" % (self.__get_product_identification(product),
-                                                                                                                   best_price,
-                                                                                                                   best_price_currency,
-                                                                                                                   best_shop_name,
-                                                                                                                   min_accepted_price,
-                                                                                                                   under_best_price_amount))
+        logging.info(
+            "The best price for %s is %.2f %s from %s (accepted minimum price: %.2f €, limit: %.2f €)"
+            % (
+                self.__get_product_identification(product),
+                best_price,
+                best_price_currency,
+                best_shop_name,
+                min_accepted_price,
+                under_best_price_amount,
+            )
+        )
         if not my_offer_exist:
             logging.info("My offer does not exist for product %s" % product["name"])
             return
 
         if self.__get_mrp_price(product) <= 0:
-            logging.info('MRP price is not set (%s)' % product["mrp_price"])
+            logging.info("MRP price is not set (%s)" % product["mrp_price"])
             return
 
-        new_price = self.__get_new_price(product, best_price, best_shop_name, second_best_price, second_best_price_currency, under_best_price_amount)
+        new_price = self.__get_new_price(
+            product, best_price, best_shop_name, second_best_price, second_best_price_currency, under_best_price_amount
+        )
 
         if new_price is not None and new_price != self.__get_product_price(product) and new_price >= min_accepted_price:
             self.__update_price(product, new_price, session, token)
@@ -223,13 +245,15 @@ class PriceUpdater:
 
                 token = self.__get_token(session)
                 products = self.__get_products(session, token)
+                logging.debug(f"{products=}")
 
                 for index, product in enumerate(products):
                     if DEVELOPMENT and index > 0:
                         break
                     try:
-                        parser = self.__open_url_and_parse(session, "%s/?%s" % (self.search_url, 
-                                                                                urllib.urlencode({self.search_var_name: product["name"]})))
+                        parser = self.__open_url_and_parse(
+                            session, "%s/?%s" % (self.search_url, urlencode({self.search_var_name: product["name"]}))
+                        )
                         if self.__bot_hunter_page(parser):
                             logging.warning("Bot Hunter page has been occurred")
                             logging.debug(parser.contents)
@@ -237,9 +261,9 @@ class PriceUpdater:
 
                         self.__process_product(product, parser, session, token)
 
-                    except:
-                        logging.error("error: %s" % traceback.format_exc(sys.exc_info()[2]))
-        except:
-            logging.error("error: %s" % traceback.format_exc(sys.exc_info()[2]))
+                    except Exception as error:
+                        logging.error("error: %s\n%s" % (error, traceback.format_exc(sys.exc_info()[2])))
+        except Exception as error:
+            logging.error("error: %s\n%s" % (error, traceback.format_exc(sys.exc_info()[2])))
 
         logging.info("end")
