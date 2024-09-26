@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import json
 import logging
 import os
@@ -76,15 +74,18 @@ class PriceUpdater:
         product_list_response = session.get(self.api_url + self.product_list_page, params={"token": token})
         return json.loads(product_list_response.text)["products"]
 
-    def __open_url_and_parse(self, session, url):
+    def __open_url_and_parse(self, session, url, **params):
         logging.debug("sleeping %d seconds" % self.request_sleep)
         time.sleep(self.request_sleep)
         logging.debug("opening %s" % url)
-        response = session.get(url)
+        logging.debug(f"{params=}")
+        response = session.get(url, params=params)
+        response.raise_for_status()
         logging.debug("Response URL: %s" % response.url)
         return BeautifulSoup(response.text, features="html.parser")
 
     def __get_product_url(self, parser, product):
+        logging.debug(f"{product['name']=}")
         for tag in parser.select("a.c-product__link"):
             if product["name"] in tag.contents[0] and self.valid_product_url(tag["href"], self.search_url):
                 return tag["href"]
@@ -138,9 +139,9 @@ class PriceUpdater:
         for offer in offers:
             offer_price_span = offer.select("span.c-offer__price")
             if len(offer_price_span) > 0:
-                price_array = offer_price_span[0].contents[0].rsplit(" ", 1)
-                price = float(price_array[0].replace(" ", "").replace(",", "."))
-                shop_offers.append((price, price_array[1], offer.select("a.c-offer__shop-name")[0].contents[0]))
+                price_array = offer_price_span[0].contents[0].rsplit("\xa0", 1)
+                price = float(price_array[0].replace(",", "."))
+                shop_offers.append((price, price_array[1], offer.select("img.c-offer__shop-logo")[0]["alt"]))
         shop_offers.sort(key=lambda tup: tup[0])
         return shop_offers
 
@@ -233,8 +234,12 @@ class PriceUpdater:
             product, best_price, best_shop_name, second_best_price, second_best_price_currency, under_best_price_amount
         )
 
+        logging.debug(f"New price should be: {new_price}")
+
         if new_price is not None and new_price != self.__get_product_price(product) and new_price >= min_accepted_price:
             self.__update_price(product, new_price, session, token)
+        else:
+            logging.info("New price has not been updated")
 
     def process(self):
         logging.info("starting")
@@ -242,6 +247,8 @@ class PriceUpdater:
         try:
             with requests.Session() as session:
                 self.__set_bot_hunter_cookie(session)
+
+                session.headers = {'User-Agent': 'Mozilla/5.0 (iPad; CPU OS 12_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148'}
 
                 token = self.__get_token(session)
                 products = self.__get_products(session, token)
@@ -252,13 +259,12 @@ class PriceUpdater:
                         break
                     try:
                         parser = self.__open_url_and_parse(
-                            session, "%s/?%s" % (self.search_url, urlencode({self.search_var_name: product["name"]}))
+                            session, self.search_url, **{self.search_var_name: product["name"]}
                         )
                         if self.__bot_hunter_page(parser):
                             logging.warning("Bot Hunter page has been occurred")
                             logging.debug(parser.contents)
                             break
-
                         self.__process_product(product, parser, session, token)
 
                     except Exception as error:
