@@ -1,0 +1,25 @@
+[flake8]
+max-line-length = 120
+
+# McCabe complexity
+max-complexity = 13
+
+# B901: return statements in generators - in Python 3 that's allowed.
+# E203:
+# E226:
+# E302:
+# E722: duplicate of B001, so can be excluded
+# S101
+# S311
+# I004
+# N818
+# T002
+# T003
+# S608: Possible SQL injection vector through string-based query construction.
+# S603: subprocess call - check for execution of untrusted input.
+# S607: Starting a process with a partial executable path.
+# S404: Consider possible security implications associated with the subprocess module.
+extend-ignore=B901,E203,E226,E302,E722,S101,S311,I004,N818,T002,T003,S608,S603,S607,S404
+
+exclude =
+    venv
