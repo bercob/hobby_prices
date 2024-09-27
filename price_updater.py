@@ -5,6 +5,7 @@ import re
 import sys
 import time
 import traceback
+from asyncio import timeout
 from configparser import RawConfigParser
 
 import requests
@@ -21,6 +22,7 @@ class PriceUpdater:
         self.vat = float(ini_parser.get("general", "vat"))
         self.my_shop_name = ini_parser.get("general", "my_shop_name")
         self.request_sleep = int(ini_parser.get("general", "request_sleep"))
+        self.request_timeout = int(ini_parser.get("general", "request_timeout"))
         self.bot_hunter_title = ini_parser.get("general", "bot_hunter_title")
         # credentials
         self.credential_ini_file_path = os.path.join(
@@ -65,12 +67,17 @@ class PriceUpdater:
 
     def __get_token(self, session):
         login_response = session.post(
-            self.api_url + self.login_page, data={"username": self.username, "password": self.password}
+            self.api_url + self.login_page,
+            data={"username": self.username, "password": self.password},
+            timeout=self.request_timeout,
         )
+        login_response.raise_for_status()
         return json.loads(login_response.text)["token"]
 
     def __get_products(self, session, token):
-        product_list_response = session.get(self.api_url + self.product_list_page, params={"token": token}, timeout=60)
+        product_list_response = session.get(
+            self.api_url + self.product_list_page, params={"token": token}, timeout=self.request_timeout
+        )
         product_list_response.raise_for_status()
         return json.loads(product_list_response.text)["products"]
 
@@ -79,7 +86,7 @@ class PriceUpdater:
         time.sleep(self.request_sleep)
         logging.debug("opening %s" % url)
         logging.debug(f"{params=}")
-        response = session.get(url, params=params, timeout=60)
+        response = session.get(url, params=params, timeout=self.request_timeout)
         response.raise_for_status()
         logging.debug("Response URL: %s" % response.url)
         return BeautifulSoup(response.text, features="html.parser")
@@ -124,7 +131,9 @@ class PriceUpdater:
                 self.api_url + self.product_update_page,
                 params={"token": token},
                 data={"product_id": product["product_id"], "price": new_price},
+                timeout=self.request_timeout,
             )
+            product_update_response.raise_for_status()
             if "success" in json.loads(product_update_response.text):
                 logging.info("%s price update has been successful" % self.__get_product_identification(product))
             else:
@@ -250,7 +259,7 @@ class PriceUpdater:
 
                 session.headers = {
                     "User-Agent": "Mozilla/5.0 (iPad; CPU OS 12_2 like Mac OS X) AppleWebKit/605.1.15 "
-                                  "(KHTML, like Gecko) Mobile/15E148"
+                    "(KHTML, like Gecko) Mobile/15E148"
                 }
 
                 token = self.__get_token(session)
@@ -271,8 +280,8 @@ class PriceUpdater:
                         self.__process_product(product, parser, session, token)
 
                     except Exception as error:
-                        logging.error("error: %s\n%s" % (error, traceback.format_exc(sys.exc_info()[2])))
+                        logging.error("error: %s\n%s" % (error, traceback.format_exc()))
         except Exception as error:
-            logging.error("error: %s\n%s" % (error, traceback.format_exc(sys.exc_info()[2])))
+            logging.error("error: %s\n%s" % (error, traceback.format_exc()))
 
         logging.info("end")
