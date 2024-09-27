@@ -72,6 +72,7 @@ class PriceUpdater:
 
     def __get_products(self, session, token):
         product_list_response = session.get(self.api_url + self.product_list_page, params={"token": token})
+        product_list_response.raise_for_status()
         return json.loads(product_list_response.text)["products"]
 
     def __open_url_and_parse(self, session, url, **params):

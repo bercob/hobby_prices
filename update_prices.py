@@ -3,6 +3,7 @@
 import logging
 import os
 import sys
+import traceback
 from argparse import ArgumentParser
 from configparser import RawConfigParser
 from logging.handlers import TimedRotatingFileHandler
@@ -35,10 +36,18 @@ def set_logging(parser):
 
 
 if __name__ == "__main__":
-    args = parse_arguments()
-    ini_parser = RawConfigParser()
-    ini_parser.read(args.ini_file_path)
-    set_logging(ini_parser)
-
-    price_updater = PriceUpdater(ini_parser)
-    price_updater.process()
+    try:
+        args = parse_arguments()
+        ini_parser = RawConfigParser()
+        ini_parser.read(args.ini_file_path)
+        set_logging(ini_parser)
+    except Exception as init_exception:
+        print(f"init exception has been occurred: {init_exception}")  # noqa: T201,T001
+        exit(100)
+    try:
+        price_updater = PriceUpdater(ini_parser)
+        price_updater.process()
+    except Exception as common_exception:
+        logging.error(f"main exception has been occurred: {common_exception}")
+        logging.debug(traceback.format_exc())
+        sys.exit(101)
