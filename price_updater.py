@@ -6,7 +6,6 @@ import sys
 import time
 import traceback
 from configparser import RawConfigParser
-from urllib.parse import urlencode
 
 import requests
 from bs4 import BeautifulSoup
@@ -249,7 +248,10 @@ class PriceUpdater:
             with requests.Session() as session:
                 self.__set_bot_hunter_cookie(session)
 
-                session.headers = {'User-Agent': 'Mozilla/5.0 (iPad; CPU OS 12_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148'}
+                session.headers = {
+                    "User-Agent": "Mozilla/5.0 (iPad; CPU OS 12_2 like Mac OS X) AppleWebKit/605.1.15 "
+                                  "(KHTML, like Gecko) Mobile/15E148"
+                }
 
                 token = self.__get_token(session)
                 products = self.__get_products(session, token)
