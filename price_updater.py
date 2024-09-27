@@ -71,7 +71,7 @@ class PriceUpdater:
         return json.loads(login_response.text)["token"]
 
     def __get_products(self, session, token):
-        product_list_response = session.get(self.api_url + self.product_list_page, params={"token": token})
+        product_list_response = session.get(self.api_url + self.product_list_page, params={"token": token}, timeout=60)
         product_list_response.raise_for_status()
         return json.loads(product_list_response.text)["products"]
 
@@ -80,7 +80,7 @@ class PriceUpdater:
         time.sleep(self.request_sleep)
         logging.debug("opening %s" % url)
         logging.debug(f"{params=}")
-        response = session.get(url, params=params)
+        response = session.get(url, params=params, timeout=60)
         response.raise_for_status()
         logging.debug("Response URL: %s" % response.url)
         return BeautifulSoup(response.text, features="html.parser")
