@@ -3,12 +3,16 @@ import logging
 import os
 import random
 import re
+import ssl
 import time
 import traceback
 from configparser import RawConfigParser
 
+import certifi
 import requests
 from bs4 import BeautifulSoup
+
+from tls_adapter import TLSAdapter
 
 DEVELOPMENT = os.getenv("DEVELOPMENT", "False").lower() in ("true", "1", "t")
 
@@ -74,6 +78,7 @@ class PriceUpdater:
             headers={"User-Agent": self.__get_random_user_agent()},
             data={"username": self.username, "password": self.password},
             timeout=self.request_timeout,
+            verify=certifi.where(),
         )
         login_response.raise_for_status()
         return json.loads(login_response.text)["token"]
@@ -84,6 +89,7 @@ class PriceUpdater:
             headers={"User-Agent": self.__get_random_user_agent()},
             params={"token": token},
             timeout=self.request_timeout,
+            verify=certifi.where(),
         )
         product_list_response.raise_for_status()
         return json.loads(product_list_response.text)["products"]
@@ -94,7 +100,11 @@ class PriceUpdater:
         logging.debug("opening %s" % url)
         logging.debug(f"{params=}")
         response = session.get(
-            url, headers={"User-Agent": self.__get_random_user_agent()}, params=params, timeout=self.request_timeout
+            url,
+            headers={"User-Agent": self.__get_random_user_agent()},
+            params=params,
+            timeout=self.request_timeout,
+            verify=certifi.where(),
         )
         response.raise_for_status()
         logging.debug("Response URL: %s" % response.url)
@@ -142,6 +152,7 @@ class PriceUpdater:
                 params={"token": token},
                 data={"product_id": product["product_id"], "price": new_price},
                 timeout=self.request_timeout,
+                verify=certifi.where(),
             )
             product_update_response.raise_for_status()
             if "success" in json.loads(product_update_response.text):
@@ -269,6 +280,10 @@ class PriceUpdater:
         try:
             with requests.Session() as session:
                 self.__set_bot_hunter_cookie(session)
+
+                # Create and mount a custom adapter to enforce TLSv1.2
+                adapter = TLSAdapter(tls_version=ssl.PROTOCOL_TLSv1_2)
+                session.mount("https://", adapter)
 
                 token = self.__get_token(session)
                 products = self.__get_products(session, token)
