@@ -1,11 +1,10 @@
 import json
 import logging
 import os
+import random
 import re
-import sys
 import time
 import traceback
-from asyncio import timeout
 from configparser import RawConfigParser
 
 import requests
@@ -51,6 +50,10 @@ class PriceUpdater:
         self.cookies_domain = self.credentials_ini_parser.get("cookies", "domain")
         self.bot_hunter_cookie = self.credentials_ini_parser.get("cookies", "bot_hunter")
 
+        # user agents
+        with open("user_agents.json", "r") as f_user_agents:
+            self.user_agents = json.load(f_user_agents).get("result", [])
+
     @staticmethod
     def __url_validator(url):
         regex = re.compile(
@@ -66,8 +69,10 @@ class PriceUpdater:
         return re.match(regex, url) is not None
 
     def __get_token(self, session):
+        print(self.user_agents)
         login_response = session.post(
             self.api_url + self.login_page,
+            headers={"User-Agent": self.__get_random_user_agent()},
             data={"username": self.username, "password": self.password},
             timeout=self.request_timeout,
         )
@@ -76,7 +81,10 @@ class PriceUpdater:
 
     def __get_products(self, session, token):
         product_list_response = session.get(
-            self.api_url + self.product_list_page, params={"token": token}, timeout=self.request_timeout
+            self.api_url + self.product_list_page,
+            headers={"User-Agent": self.__get_random_user_agent()},
+            params={"token": token},
+            timeout=self.request_timeout,
         )
         product_list_response.raise_for_status()
         return json.loads(product_list_response.text)["products"]
@@ -86,7 +94,9 @@ class PriceUpdater:
         time.sleep(self.request_sleep)
         logging.debug("opening %s" % url)
         logging.debug(f"{params=}")
-        response = session.get(url, params=params, timeout=self.request_timeout)
+        response = session.get(
+            url, headers={"User-Agent": self.__get_random_user_agent()}, params=params, timeout=self.request_timeout
+        )
         response.raise_for_status()
         logging.debug("Response URL: %s" % response.url)
         return BeautifulSoup(response.text, features="html.parser")
@@ -129,6 +139,7 @@ class PriceUpdater:
         if self.price_update_enabled == "1":
             product_update_response = session.post(
                 self.api_url + self.product_update_page,
+                headers={"User-Agent": self.__get_random_user_agent()},
                 params={"token": token},
                 data={"product_id": product["product_id"], "price": new_price},
                 timeout=self.request_timeout,
@@ -193,6 +204,9 @@ class PriceUpdater:
         except ValueError:
             return 0
 
+    def __get_random_user_agent(self):
+        return self.user_agents[random.randint(0, len(self.user_agents) - 1)]
+
     def __process_product(self, product, parser, session, token):
         product_url = self.__get_product_url(parser, product)
         if product_url is None:
@@ -256,11 +270,6 @@ class PriceUpdater:
         try:
             with requests.Session() as session:
                 self.__set_bot_hunter_cookie(session)
-
-                session.headers = {
-                    "User-Agent": "Mozilla/5.0 (iPad; CPU OS 12_2 like Mac OS X) AppleWebKit/605.1.15 "
-                    "(KHTML, like Gecko) Mobile/15E148"
-                }
 
                 token = self.__get_token(session)
                 products = self.__get_products(session, token)
