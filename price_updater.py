@@ -69,7 +69,6 @@ class PriceUpdater:
         return re.match(regex, url) is not None
 
     def __get_token(self, session):
-        print(self.user_agents)
         login_response = session.post(
             self.api_url + self.login_page,
             headers={"User-Agent": self.__get_random_user_agent()},
