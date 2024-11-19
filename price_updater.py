@@ -171,7 +171,9 @@ class PriceUpdater:
             if len(offer_price_span) > 0:
                 price_array = offer_price_span[0].contents[0].rsplit("\xa0", 1)
                 price = float(price_array[0].replace(",", "."))
-                shop_offers.append((price, price_array[1], offer.select("img.c-offer__shop-logo")[0]["alt"]))
+                shop_offers.append(
+                    (price, price_array[1], offer.select("img.c-offer__shop-logo")[0]["alt"].replace("Logo ", ""))
+                )
         shop_offers.sort(key=lambda tup: tup[0])
         return shop_offers
 
